@@ -1,0 +1,21 @@
+# 已确认美术方向与生成记录
+
+2026-11-17 用户确认细腻东方幻想绘本角色稿及青绿金边战斗界面。参考图在本目录；图中示例等级与生命并非实际规则。
+
+使用内置 imagegen 工具，根据已确认稿生成三兽透明 PNG 与独立场景；未调用第三方素材库。三兽用于首轮静态立绘与 CSS 演出，尚无逐帧骨骼动画，其余三兽保留 SVG 原型。
+
+## fox
+
+Use case: stylized-concept. Extract/redraw a single original game creature from this APPROVED character sheet into a production-ready isolated full body sprite. Match reference identity, colors and sophisticated hand-painted Eastern fantasy gouache with fine ink/fur details closely. True transparent alpha background, no paper, no ground, no frame, no shadow disk, no writing, no labels, no other characters. Creature faces RIGHT, side/three-quarter view, standing ready for battle, all body parts including tail and feet visible with 8% clear margins. Large centered character fills canvas, detailed but crisp at game size. No white background or fake checkerboard. ONLY the nine-tail fox in left column. Cream white fine fur, warm red ear and paw tips, amber eyes, cinnabar forehead, nine flowing distinct fluffy cream tails with vermilion tips spread BEHIND toward left, face RIGHT, anatomically foxlike, strong elegant stance. Preserve approved design, not a chibi vector.
+
+## turtle
+
+Use case: stylized-concept. Extract/redraw a single original game creature from this APPROVED character sheet into a production-ready isolated full body sprite. Match reference identity, colors and sophisticated hand-painted Eastern fantasy gouache with fine ink/fur details closely. True transparent alpha background, no paper, no ground, no frame, no shadow disk, no writing, no labels, no other characters. Creature faces RIGHT, side/three-quarter view, standing ready for battle, all body parts including tail and feet visible with 8% clear margins. Large centered character fills canvas, detailed but crisp at game size. No white background or fake checkerboard. ONLY the bird-headed turtle in center column. Short ivory hooked beak and gold eye facing RIGHT, teal feather neck ruff, heavy jade green domed segmented shell with muted gold flowing motifs, four reptilian sturdy feet, long curling teal tail behind toward LEFT. Preserve charming alert reference design. NOT a dragon head.
+
+## deer
+
+Use case: stylized-concept. Extract/redraw a single original game creature from this APPROVED character sheet into a production-ready isolated full body sprite. Match reference identity, colors and sophisticated hand-painted Eastern fantasy gouache with fine ink/fur details closely. True transparent alpha background, no paper, no ground, no frame, no shadow disk, no writing, no labels, no other characters. Creature faces RIGHT, side/three-quarter view, standing ready for battle, all body parts including tail and feet visible with 8% clear margins. Large centered character fills canvas, detailed but crisp at game size. No white background or fake checkerboard. ONLY the white-headed tiger-striped HORSE in right column. No antlers. White equine face facing RIGHT, tawny body with dark tiger stripes, red-orange mane and long flowing red tail behind LEFT, slim strong horse legs/hooves, elegant energetic pose with one foreleg slightly raised. Preserve reference, not deer or generic unicorn.
+
+## battlefield
+
+Use case: stylized-concept. Create a premium hand-painted Eastern fantasy RPG battle BACKGROUND ONLY, landscape 16:9. Match the reference image's environment style exactly: mysterious misty blue-green Chinese mountain valley, moonlight through pines, layered cliffs and a fine distant waterfall, old stones and quiet flowing creek, muted jade/cyan/moss with restrained warm light. Composition for browser battle game: lower half has TWO broad flat stone fighting platforms left and right at SAME ground height, subtly separated by water, large EMPTY clear space above each platform for creature sprites. Upper quarter darker low-detail foliage/mountains suitable for overlay HP UI. Atmospheric distant center, crisp foreground stone and grass detail; enough contrast but no distractingly bright central objects. High-end fine ink contour and textured gouache illustration, sophisticated fantasy world, not flat SVG/cartoon. REMOVE ALL CHARACTERS, CREATURES, FIRE, SHIELDS, UI PANELS, TEXT, NUMBERS, LETTERING, LOGOS AND BORDERS. This is a clean reusable scene plate only. No parchment. Full bleed.

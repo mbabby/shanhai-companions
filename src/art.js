@@ -1,4 +1,4 @@
-// Original vector illustrations, drawn for 山海同行. No external assets.
+// Approved generated paintings for the three starters; original SVG prototypes for the rest.
 let drawingNumber = 0;
 const palettes = {
   fox: ['#f5b06d', '#ce5b42', '#813b36'],
@@ -35,6 +35,10 @@ const drawings = { fox, turtle, deer, boar, ape, fish };
 
 /** SVG is decorative: the surrounding UI supplies the creature's name and stats. */
 export function creatureArt(id, options = {}) {
+  if (['fox', 'turtle', 'deer'].includes(id)) {
+    const url = new URL(`../assets/${id}.png`, import.meta.url).href;
+    return `<img src="${escapeAttribute(url)}" class="creature-art painted-art ${escapeAttribute(options.className || '')}" alt="" aria-hidden="true" draggable="false" width="1536" height="1024" />`;
+  }
   if (!Object.hasOwn(drawings, id)) throw new RangeError(`Unknown creature: ${id}`);
   const prefix = `shanhai-art-${++drawingNumber}`;
   const [light, mid, dark] = palettes[id];
