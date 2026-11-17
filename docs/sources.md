@@ -22,3 +22,9 @@
 用户确认 `docs/art-direction/characters-approved.png` 与 `battle-approved.png` 的美术方向后，使用内置 imagegen 生成 `assets/fox.png`、`turtle.png`、`deer.png`、`battlefield.png`。完整提示词见 [生成记录](art-direction/prompts.md)。素材为本项目 AI 生成表达，按仓库 MIT 条款提供，不宣称人工绘制或原典复原。原型其余三兽仍使用 SVG。
 
 参考稿保留为设计记录，游戏实际使用独立角色 PNG 与无角色背景、真实 HTML 血条和技能控件。效果图中的等级、生命数值及装饰文字不构成游戏规则。
+
+## v0.3 六兽与合成音频
+
+新增 `assets/boar.png`、`ape.png`、`fish.png`，采用同一内置 imagegen 工作流与已确认风格；提示词见 [v0.3 记录](art-direction/prompts-v0.3.md)。全套素材按仓库 MIT 条款提供，明确为 AI 生成表达，不宣称人工绘制。
+
+音效与氛围由 `src/audio.js` 使用 Web Audio 正弦振荡器实时合成，没有使用外部音乐或采样文件。界面、素材与声音均无需第三方网络请求。

@@ -1,4 +1,6 @@
 import { CREATURES } from './data.js';
+import { combatConfig } from './progression.js';
+const config = actor => combatConfig(actor.id,actor.xp);
 const species = new Map(CREATURES.map(c => [c.id,c]));
 const beats = {金:'木',木:'土',土:'水',水:'火',火:'金'};
 const sides = ['player','enemy'];
@@ -15,41 +17,46 @@ function result(state) {
   const p=state.player.team.some(c=>c.hp>0),e=state.enemy.team.some(c=>c.hp>0);
   return p && e ? null : p ? 'player' : e ? 'enemy' : 'draw';
 }
-function validate(state) {
-  requireThat(state && integer(state.turn,1) && Array.isArray(state.log) && state.log.every(l=>typeof l==='string'),'战斗状态无效');
+export function validateBattle(state) {
+  requireThat(state && integer(state.turn,1) && Array.isArray(state.log) && state.log.length<=200 && state.log.every(l=>typeof l==='string' && l.length<=500),'战斗状态无效');
   for (const side of sides) {
     const squad=state[side];
     requireThat(squad && Array.isArray(squad.team),'队伍状态无效');
     checkIds(squad.team.map(c=>c?.id));
-    requireThat(integer(squad.active,0,2),'出场位置无效');
+    requireThat(integer(squad.active,0,2) && integer(squad.switchCooldown,0,2),'出场位置无效');
     for (const c of squad.team) {
-      const base=species.get(c.id);
-      requireThat(c.maxHp===base.hp && integer(c.hp,0,c.maxHp) && integer(c.burn,0,3) && integer(c.slow,0,3) && integer(c.shield,0,36),'异兽状态无效');
+      requireThat(integer(c.xp,0,90),'经验无效');
+      const base=config(c);
+      requireThat(c.level===base.level && c.maxHp===base.hp && integer(c.hp,0,c.maxHp) && integer(c.burn,0,3) && integer(c.slow,0,3) && integer(c.shield,0,36),'异兽状态无效');
       requireThat(c.cooldowns && Object.keys(c.cooldowns).length===base.moves.length && base.moves.every(m=>Object.hasOwn(c.cooldowns,m.id) && integer(c.cooldowns[m.id],0,m.cooldown)),'技能冷却无效');
     }
     requireThat(!squad.team.some(c=>c.hp>0) || squad.team[squad.active].hp>0,'倒下异兽必须补位');
   }
   requireThat(state.winner===result(state),'胜负状态不一致');
+  return true;
 }
-export function createBattle(playerIds,enemyIds) {
+export function createBattle(playerIds,enemyIds,options={}) {
   checkIds(playerIds);checkIds(enemyIds);
-  const team=ids=>({active:0,team:ids.map(id=>{const c=species.get(id);return {id,hp:c.hp,maxHp:c.hp,cooldowns:Object.fromEntries(c.moves.map(m=>[m.id,0])),burn:0,slow:0,shield:0};})});
-  return {turn:1,player:team(playerIds),enemy:team(enemyIds),winner:null,log:['山隘试炼开始。']};
+  requireThat(options && typeof options==='object','战斗选项无效');
+  const progress=options.playerProgress ?? {};
+  requireThat(progress && typeof progress==='object' && !Array.isArray(progress) && Object.entries(progress).every(([id,xp])=>species.has(id) && integer(xp,0,90)),'成长记录无效');
+  const team=(ids,progress={})=>({active:0,switchCooldown:0,team:ids.map(id=>{const xp=progress[id]??0,c=combatConfig(id,xp);return {id,xp,level:c.level,hp:c.hp,maxHp:c.hp,cooldowns:Object.fromEntries(c.moves.map(m=>[m.id,0])),burn:0,slow:0,shield:0};})});
+  return {turn:1,player:team(playerIds,progress),enemy:team(enemyIds),winner:null,log:['山隘试炼开始。']};
 }
 function damage(actor,target,move) {
-  const a=species.get(actor.id),d=species.get(target.id);
+  const a=config(actor),d=config(target);
   return Math.max(1,Math.round((move.power+a.attack*.65-d.defense*.45)*effectiveness(a.element,d.element)));
 }
 function impact(actor,target,move) {
-  const multiplier=move.power>0?effectiveness(species.get(actor.id).element,species.get(target.id).element):1;
+  const multiplier=move.power>0?effectiveness(config(actor).element,config(target).element):1;
   const raw=move.power>0?damage(actor,target,move):0;
   const shieldDamage=Math.min(target.shield,raw);
   return {damage:raw,hpDamage:Math.min(target.hp,raw-shieldDamage),shieldDamage,multiplier};
 }
 export function previewMove(state,moveId) {
-  validate(state);
+  validateBattle(state);
   const actor=state.player.team[state.player.active],target=state.enemy.team[state.enemy.active];
-  const move=species.get(actor.id).moves.find(m=>m.id===moveId);
+  const move=config(actor).moves.find(m=>m.id===moveId);
   requireThat(move,'技能不存在');
   return impact(actor,target,move);
 }
@@ -59,11 +66,25 @@ function snapshot(state) {
   return structuredClone({turn,player,enemy,winner,log});
 }
 export function chooseEnemyAction(state) {
-  validate(state);requireThat(!state.winner,'战斗已经结束');
+  validateBattle(state);requireThat(!state.winner,'战斗已经结束');
   const actor=state.enemy.team[state.enemy.active],target=state.player.team[state.player.active];
-  const moves=species.get(actor.id).moves.filter(m=>actor.cooldowns[m.id]===0);
-  // Commit from the visible pre-turn board. Never inspect or simulate a player's choice.
-  const score=m=>m.power>0 ? damage(actor,target,m)+(m.effect?.type==='burn' && !target.burn ? 10 : 0)+(m.effect?.type==='slow' && !target.slow ? 4 : 0) : m.effect?.type==='heal' && actor.maxHp-actor.hp>=35 && actor.hp<actor.maxHp*.5 ? 39 : -1;
+  const moves=config(actor).moves.filter(m=>actor.cooldowns[m.id]===0);
+  // Commit only from the public board; never inspect the selected player action.
+  const threats=config(target).moves.filter(m=>m.power>0 && target.cooldowns[m.id]===0);
+  const incoming=Math.max(...threats.map(m=>damage(target,actor,m)));
+  const squad=state.enemy;
+  // Preserve a wounded disadvantaged ally only if the replacement can absorb a hit.
+  // A two-round lock prevents switching back and forth instead of fighting.
+  if (!squad.switchCooldown && actor.hp<actor.maxHp*.5 && actor.hp>incoming && effectiveness(config(target).element,config(actor).element)>1) {
+    const index=squad.team.findIndex((c,i)=>i!==squad.active && c.hp>0 && effectiveness(config(target).element,config(c).element)<1 && c.hp>Math.max(...threats.map(m=>damage(target,c,m))));
+    if(index>=0) return {type:'switch',index};
+  }
+  const score=m=>{
+    if(m.power>0) return impact(actor,target,m).hpDamage+(m.effect?.type==='burn' && !target.burn ? 10 : 0)+(m.effect?.type==='slow' && !target.slow ? 4 : 0);
+    if(m.effect?.type==='heal') return actor.maxHp-actor.hp>=35 && actor.hp<actor.maxHp*.5 ? 39 : -1;
+    if(m.effect?.type==='shield' && incoming>=actor.hp+actor.shield && incoming<actor.hp+Math.max(actor.shield,m.effect.value)) return 100;
+    return -1;
+  };
   const move=moves.reduce((a,b)=>score(b)>score(a)?b:a);
   return {type:'move',moveId:move.id};
 }
@@ -73,7 +94,7 @@ function checkAction(state,action) {
   if (action.type==='switch') requireThat(integer(action.index,0,2) && action.index!==squad.active && squad.team[action.index].hp>0,'无法换到该异兽');
   else {
     requireThat(action.type==='move','未知行动');
-    const move=species.get(actor.id).moves.find(m=>m.id===action.moveId);
+    const move=config(actor).moves.find(m=>m.id===action.moveId);
     requireThat(move && actor.cooldowns[move.id]===0,'技能不存在或仍在冷却');
   }
 }
@@ -88,22 +109,24 @@ function replace(state,emit) {
   state.winner=result(state);
 }
 export function resolveTurn(state,action) {
-  validate(state);requireThat(!state.winner,'战斗已经结束');checkAction(state,action);
+  validateBattle(state);requireThat(!state.winner,'战斗已经结束');checkAction(state,action);
   const enemyAction=chooseEnemyAction(state),next=snapshot(state),events=[];
   const emit=event=>events.push({...event,state:snapshot(next)});
   next.log.push(`第 ${state.turn} 回合`);
   const commands=sides.map((side,i)=>{
     const actor=next[side].team[next[side].active];
-    return {side,actor,action:i===0?action:enemyAction,speed:species.get(actor.id).speed*(actor.slow>0?.5:1)};
-  }).sort((a,b)=>(b.action.type==='switch')-(a.action.type==='switch') || b.speed-a.speed || (a.side==='player'?-1:1));
+    const chosen=i===0?action:enemyAction;
+    const priority=chosen.type==='switch'?2:(config(actor).moves.find(m=>m.id===chosen.moveId).priority??0);
+    return {side,actor,action:chosen,priority,speed:config(actor).speed*(actor.slow>0?.5:1)};
+  }).sort((a,b)=>b.priority-a.priority || b.speed-a.speed || (a.side==='player'?-1:1));
   for (const command of commands) {
     if (next.winner) break;
     const {side,actor,action:chosen}=command,squad=next[side];
-    if (actor.hp===0) {next.log.push(`${species.get(actor.id).name}已倒下，行动取消。`);continue;}
-    if (chosen.type==='switch') {squad.active=chosen.index;next.log.push(`我方换上${species.get(squad.team[chosen.index].id).name}。`);emit({type:'switch',side,actorId:actor.id,targetId:squad.team[chosen.index].id});continue;}
-    const move=species.get(actor.id).moves.find(m=>m.id===chosen.moveId);
+    if (actor.hp===0) {next.log.push(`${config(actor).name}已倒下，行动取消。`);continue;}
+    if (chosen.type==='switch') {squad.active=chosen.index;squad.switchCooldown=3;next.log.push(`${side==='player'?'我方':'守关方'}换上${species.get(squad.team[chosen.index].id).name}。`);emit({type:'switch',side,actorId:actor.id,targetId:squad.team[chosen.index].id});continue;}
+    const move=config(actor).moves.find(m=>m.id===chosen.moveId);
     const targetSide=side==='player'?'enemy':'player',target=next[targetSide].team[next[targetSide].active];
-    const name=species.get(actor.id).name;
+    const name=config(actor).name;
     const hit=impact(actor,target,move);
     const event={type:'move',side,targetSide,actorId:actor.id,targetId:target.id,moveId:move.id,hpDamage:hit.hpDamage,shieldDamage:hit.shieldDamage,multiplier:hit.multiplier};
     actor.cooldowns[move.id]=move.cooldown>0?move.cooldown+1:0;
@@ -111,16 +134,17 @@ export function resolveTurn(state,action) {
       const {shieldDamage:blocked,hpDamage:loss}=hit;
       target.shield-=blocked;target.hp-=loss;
       const mult=hit.multiplier;
-      next.log.push(`${name}使出${move.name}，${species.get(target.id).name}损失 ${loss} 生命${blocked?`（护盾吸收 ${blocked}）`:''}${mult===1.5?'，五行克制！':mult===.75?'，效果减弱。':'。'}`);
+      next.log.push(`${name}使出${move.name}，${config(target).name}损失 ${loss} 生命${blocked?`（护盾吸收 ${blocked}）`:''}${mult===1.5?'，五行克制！':mult===.75?'，效果减弱。':'。'}`);
     }
     const effect=move.effect;
     if (effect?.type==='heal') {const amount=Math.min(effect.value,actor.maxHp-actor.hp);actor.hp+=amount;event.amount=amount;next.log.push(`${name}使出${move.name}，恢复 ${amount} 生命。`);}
     if (effect?.type==='shield') {event.amount=Math.max(0,effect.value-actor.shield);actor.shield=Math.max(actor.shield,effect.value);next.log.push(`${name}使出${move.name}，获得 ${effect.value} 点护盾。`);}
-    if (target.hp>0 && (effect?.type==='burn' || effect?.type==='slow')) {target[effect.type]=effect.value;next.log.push(`${species.get(target.id).name}陷入${effect.type==='burn'?'灼伤':'减速'}。`);}
+    if (target.hp>0 && (effect?.type==='burn' || effect?.type==='slow')) {target[effect.type]=effect.value;next.log.push(`${config(target).name}陷入${effect.type==='burn'?'灼伤':'减速'}。`);}
     emit(event);
     if(target.hp===0 && hit.hpDamage>0) emit({type:'faint',side:targetSide,targetSide,targetId:target.id});
     replace(next,emit);
   }
+  for (const side of sides) next[side].switchCooldown=Math.max(0,next[side].switchCooldown-1);
   // All six tick together, including the bench; resolve simultaneous burn deaths together.
   for (const side of sides) for (const c of next[side].team) {
     for (const id of Object.keys(c.cooldowns)) c.cooldowns[id]=Math.max(0,c.cooldowns[id]-1);
@@ -129,6 +153,7 @@ export function resolveTurn(state,action) {
   }
   replace(next,emit);next.turn++;
   if (next.winner) next.log.push(next.winner==='player'?'试炼通过，山路重新畅通。':next.winner==='enemy'?'本次试炼未通过，可以调整队伍再来。':'双方同时倒下，平局。');
+  next.log=next.log.slice(-200);
   emit({type:'roundEnd',side:null});
   return {state:next,events};
 }
