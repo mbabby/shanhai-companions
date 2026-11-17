@@ -12,11 +12,13 @@ await mkdir(output, { recursive: true });
 const errors = [];
 const outcomes = [];
 async function checkLayout(page) {
-  assert.equal(await page.locator('.layout').evaluate(node => getComputedStyle(node).display), 'grid', 'Stylesheet must load');
+  const battleMode = await page.locator('#app').evaluate(node => node.classList.contains('battle-mode'));
+  assert.equal(await page.locator('.layout').evaluate(node => getComputedStyle(node).display), battleMode ? 'block' : 'grid', 'Stylesheet must load with correct phase layout');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Horizontal page overflow');
   assert.match(await page.locator('.site-footer').innerText(), /刷新后重置/);
 }
-async function click(page, action, extra = '') { await page.locator(`[data-action="${action}"]${extra}`).first().click(); await checkLayout(page); }
+async function settled(page) { await page.locator('#app[data-playing="false"]').waitFor(); }
+async function click(page, action, extra = '') { await page.locator(`[data-action="${action}"]${extra}`).first().click(); await settled(page); await checkLayout(page); }
 async function finishFight(page, lose = false) {
   let turns = 0;
   while (await page.locator('[data-action="move"]').count()) {
@@ -27,6 +29,7 @@ async function finishFight(page, lose = false) {
       if (await skill.count()) await skill.click();
       else await click(page, 'move', '[data-id$="-basic"]');
     }
+    await settled(page);
     await checkLayout(page);
     const feedback = page.locator('.battle-controls .feedback');
     if (await feedback.count()) assert.equal(await feedback.innerText(), '', 'No action error feedback');
@@ -36,7 +39,7 @@ async function finishFight(page, lose = false) {
 }
 try {
   for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
-    const context = await browser.newContext({ viewport });
+    const context = await browser.newContext({ viewport, reducedMotion: 'reduce' });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -69,8 +72,8 @@ try {
       outcomes.push({ width: viewport.width, starter, ...await finishFight(page) });
       if (starter === 'fox') {
         await click(page, 'start-battle');
-        assert.match(await page.locator('.arena-caption').innerText(), /第 1 回合/);
-        const bars = await page.locator('[role="progressbar"]').evaluateAll(nodes => nodes.map(n => [n.getAttribute('aria-valuenow'), n.getAttribute('aria-valuemax')]));
+        assert.match(await page.locator('.battle-toolbar').innerText(), /第 1 回合/);
+        const bars = await page.locator('.hp-track[role="progressbar"]').evaluateAll(nodes => nodes.map(n => [n.getAttribute('aria-valuenow'), n.getAttribute('aria-valuemax')]));
         assert.ok(bars.every(([hp, max]) => hp === max), 'Retry restores health');
         const defeat = await finishFight(page, true);
         assert.match(defeat.title, /歇一歇/);

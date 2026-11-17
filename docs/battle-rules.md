@@ -58,3 +58,22 @@ AI 只读取本轮行动前的公开状态，不接收玩家选择，也不模�
 非法队伍、无效位置/技能、冷却中施放、倒下者换入、重复换到当前兽、非整数/越界状态、与存活情况冲突的胜负标记均抛 `Error`，原状态保持不变。
 
 验证命令：`node --test tests/battle.test.js`。
+
+## v0.2 演出事件与预估
+
+新增 `resolveTurn(state, action)`，行动与校验规则和 `stepBattle` 相同，返回 `{state, events}`。`stepBattle` 是只返回最终 `state` 的兼容包装。状态对象本身不含 `events`，事件不会随下一回合递归累积。输入、最终状态及每个事件快照互相独立。
+
+事件按真实结算顺序产生，每项包含 `type`、`side` 与独立的 `state` 快照：
+
+- `move`：技能直接伤害及效果施加后、自动补位之前。包含 `actorId`、`targetSide`、`targetId`、`moveId`、实际 `hpDamage`、实际 `shieldDamage` 与 `multiplier`。目标字段指向当时对侧出场者；回复/护盾施加给 `actorId`，`amount` 为实际回复或护盾增加值。非攻击的两项伤害为 0、倍率为 1。
+- `switch`：主动换兽后；`side` 是换兽方，`actorId` 是离场者，`targetId` 是上场者。
+- `faint`：生命由正数降到 0 后，独立于造成倒下的 `move` 或 `burn`；`side`、`targetSide` 和 `targetId` 标识倒下者。
+- `replace`：倒下后的自动补位；身份字段与 `switch` 相同，不继承倒下者的本回合行动。
+- `burn`：一次实际灼伤扣血后，`side`、`targetSide`、`targetId` 明确标识受伤队员（可能在后备），`hpDamage` 为实际扣血，`shieldDamage=0`。所有队员轮末处理完成后才统一补位和判定胜负，因此逐项播放不改变同时灼伤的胜负语义。
+- `roundEnd`：必为最后一项，`side=null`，快照与返回的最终状态值相同，包含完成后的冷却、状态计数、轮数及胜负。
+
+事件快照只供演出使用，属于回合中的瞬时状态：例如倒下者尚未补位，技能冷却尚未经过轮末递减。不要把中间快照传入下一轮行动或 `previewMove`；演出完成后使用返回的最终 `state`。动画直接消费数值字段，不解析中文日志来猜伤害。
+
+`previewMove(state, moveId)` 对当前我方出场者与对侧出场者计算 `{damage, hpDamage, shieldDamage, multiplier}`。`damage` 为护盾前理论直接伤害，后两项受当前护盾及剩余生命限制；非攻击技能返回伤害全 0、倍率 1。允许查看冷却技能的面板预估，但不因此允许施放；无效状态或不属于当前异兽的技能会抛错。预估不包含灼伤，不模拟敌方选择；回合内换位、倒下或先手效果可能使实际结果不同。
+
+验证命令：`node --test tests/battle.test.js tests/battle-events.test.js`。

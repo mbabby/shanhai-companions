@@ -16,3 +16,9 @@
 `src/art.js` 的六兽 SVG 为本项目用代码绘制的原创原型插画，随仓库采用 MIT 许可；未复制外部图片、角色模型或现代游戏素材。九尾、鸟首龟身、白首虎纹、掘土足爪、白耳及翼蛇尾为设计线索；色彩、表情、比例、光环及昵称均属本项目表达，并非古籍复原。后续正式美术仍需逐条完善原典考据。
 
 界面使用用户设备系统字体，没有外部字体、图片或运行时脚本请求。Playwright 仅用于可选开发测试，不随静态游戏分发。
+
+## v0.2 手绘素材
+
+用户确认 `docs/art-direction/characters-approved.png` 与 `battle-approved.png` 的美术方向后，使用内置 imagegen 生成 `assets/fox.png`、`turtle.png`、`deer.png`、`battlefield.png`。完整提示词见 [生成记录](art-direction/prompts.md)。素材为本项目 AI 生成表达，按仓库 MIT 条款提供，不宣称人工绘制或原典复原。原型其余三兽仍使用 SVG。
+
+参考稿保留为设计记录，游戏实际使用独立角色 PNG 与无角色背景、真实 HTML 血条和技能控件。效果图中的等级、生命数值及装饰文字不构成游戏规则。

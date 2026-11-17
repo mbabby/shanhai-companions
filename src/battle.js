@@ -40,6 +40,24 @@ function damage(actor,target,move) {
   const a=species.get(actor.id),d=species.get(target.id);
   return Math.max(1,Math.round((move.power+a.attack*.65-d.defense*.45)*effectiveness(a.element,d.element)));
 }
+function impact(actor,target,move) {
+  const multiplier=move.power>0?effectiveness(species.get(actor.id).element,species.get(target.id).element):1;
+  const raw=move.power>0?damage(actor,target,move):0;
+  const shieldDamage=Math.min(target.shield,raw);
+  return {damage:raw,hpDamage:Math.min(target.hp,raw-shieldDamage),shieldDamage,multiplier};
+}
+export function previewMove(state,moveId) {
+  validate(state);
+  const actor=state.player.team[state.player.active],target=state.enemy.team[state.enemy.active];
+  const move=species.get(actor.id).moves.find(m=>m.id===moveId);
+  requireThat(move,'技能不存在');
+  return impact(actor,target,move);
+}
+// Select state fields explicitly: presentation events never become part of game state.
+function snapshot(state) {
+  const {turn,player,enemy,winner,log}=state;
+  return structuredClone({turn,player,enemy,winner,log});
+}
 export function chooseEnemyAction(state) {
   validate(state);requireThat(!state.winner,'战斗已经结束');
   const actor=state.enemy.team[state.enemy.active],target=state.player.team[state.player.active];
@@ -59,19 +77,20 @@ function checkAction(state,action) {
     requireThat(move && actor.cooldowns[move.id]===0,'技能不存在或仍在冷却');
   }
 }
-function replace(state) {
+function replace(state,emit) {
   for (const side of sides) {
     const squad=state[side];
     if (squad.team[squad.active].hp===0) {
       const index=squad.team.findIndex(c=>c.hp>0);
-      if (index>=0) {squad.active=index;state.log.push(`${side==='player'?'我方':'守关方'}${species.get(squad.team[index].id).name}接替出场。`);}
+      if (index>=0) {const actorId=squad.team[squad.active].id;squad.active=index;state.log.push(`${side==='player'?'我方':'守关方'}${species.get(squad.team[index].id).name}接替出场。`);emit({type:'replace',side,actorId,targetId:squad.team[index].id});}
     }
   }
   state.winner=result(state);
 }
-export function stepBattle(state,action) {
+export function resolveTurn(state,action) {
   validate(state);requireThat(!state.winner,'战斗已经结束');checkAction(state,action);
-  const enemyAction=chooseEnemyAction(state),next=structuredClone(state);
+  const enemyAction=chooseEnemyAction(state),next=snapshot(state),events=[];
+  const emit=event=>events.push({...event,state:snapshot(next)});
   next.log.push(`第 ${state.turn} 回合`);
   const commands=sides.map((side,i)=>{
     const actor=next[side].team[next[side].active];
@@ -81,30 +100,38 @@ export function stepBattle(state,action) {
     if (next.winner) break;
     const {side,actor,action:chosen}=command,squad=next[side];
     if (actor.hp===0) {next.log.push(`${species.get(actor.id).name}已倒下，行动取消。`);continue;}
-    if (chosen.type==='switch') {squad.active=chosen.index;next.log.push(`我方换上${species.get(squad.team[chosen.index].id).name}。`);continue;}
+    if (chosen.type==='switch') {squad.active=chosen.index;next.log.push(`我方换上${species.get(squad.team[chosen.index].id).name}。`);emit({type:'switch',side,actorId:actor.id,targetId:squad.team[chosen.index].id});continue;}
     const move=species.get(actor.id).moves.find(m=>m.id===chosen.moveId);
     const targetSide=side==='player'?'enemy':'player',target=next[targetSide].team[next[targetSide].active];
     const name=species.get(actor.id).name;
+    const hit=impact(actor,target,move);
+    const event={type:'move',side,targetSide,actorId:actor.id,targetId:target.id,moveId:move.id,hpDamage:hit.hpDamage,shieldDamage:hit.shieldDamage,multiplier:hit.multiplier};
     actor.cooldowns[move.id]=move.cooldown>0?move.cooldown+1:0;
     if (move.power>0) {
-      const raw=damage(actor,target,move),blocked=Math.min(target.shield,raw),loss=Math.min(target.hp,raw-blocked);
+      const {shieldDamage:blocked,hpDamage:loss}=hit;
       target.shield-=blocked;target.hp-=loss;
-      const mult=effectiveness(species.get(actor.id).element,species.get(target.id).element);
+      const mult=hit.multiplier;
       next.log.push(`${name}使出${move.name}，${species.get(target.id).name}损失 ${loss} 生命${blocked?`（护盾吸收 ${blocked}）`:''}${mult===1.5?'，五行克制！':mult===.75?'，效果减弱。':'。'}`);
     }
     const effect=move.effect;
-    if (effect?.type==='heal') {const amount=Math.min(effect.value,actor.maxHp-actor.hp);actor.hp+=amount;next.log.push(`${name}使出${move.name}，恢复 ${amount} 生命。`);}
-    if (effect?.type==='shield') {actor.shield=Math.max(actor.shield,effect.value);next.log.push(`${name}使出${move.name}，获得 ${effect.value} 点护盾。`);}
+    if (effect?.type==='heal') {const amount=Math.min(effect.value,actor.maxHp-actor.hp);actor.hp+=amount;event.amount=amount;next.log.push(`${name}使出${move.name}，恢复 ${amount} 生命。`);}
+    if (effect?.type==='shield') {event.amount=Math.max(0,effect.value-actor.shield);actor.shield=Math.max(actor.shield,effect.value);next.log.push(`${name}使出${move.name}，获得 ${effect.value} 点护盾。`);}
     if (target.hp>0 && (effect?.type==='burn' || effect?.type==='slow')) {target[effect.type]=effect.value;next.log.push(`${species.get(target.id).name}陷入${effect.type==='burn'?'灼伤':'减速'}。`);}
-    replace(next);
+    emit(event);
+    if(target.hp===0 && hit.hpDamage>0) emit({type:'faint',side:targetSide,targetSide,targetId:target.id});
+    replace(next,emit);
   }
   // All six tick together, including the bench; resolve simultaneous burn deaths together.
   for (const side of sides) for (const c of next[side].team) {
     for (const id of Object.keys(c.cooldowns)) c.cooldowns[id]=Math.max(0,c.cooldowns[id]-1);
-    if (c.hp>0 && c.burn>0) {const loss=Math.min(c.hp,Math.max(1,Math.ceil(c.maxHp*.06)));c.hp-=loss;next.log.push(`${species.get(c.id).name}因灼伤损失 ${loss} 生命。`);}
+    if (c.hp>0 && c.burn>0) {const loss=Math.min(c.hp,Math.max(1,Math.ceil(c.maxHp*.06)));c.hp-=loss;next.log.push(`${species.get(c.id).name}因灼伤损失 ${loss} 生命。`);emit({type:'burn',side,targetSide:side,targetId:c.id,hpDamage:loss,shieldDamage:0});if(c.hp===0) emit({type:'faint',side,targetSide:side,targetId:c.id});}
     c.burn=Math.max(0,c.burn-1);c.slow=Math.max(0,c.slow-1);
   }
-  replace(next);next.turn++;
+  replace(next,emit);next.turn++;
   if (next.winner) next.log.push(next.winner==='player'?'试炼通过，山路重新畅通。':next.winner==='enemy'?'本次试炼未通过，可以调整队伍再来。':'双方同时倒下，平局。');
-  return next;
+  emit({type:'roundEnd',side:null});
+  return {state:next,events};
+}
+export function stepBattle(state,action) {
+  return resolveTurn(state,action).state;
 }
