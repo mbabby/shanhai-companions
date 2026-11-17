@@ -1,4 +1,4 @@
-// Approved generated paintings for the three starters; original SVG prototypes for the rest.
+// Six generated paintings following the approved direction; original SVG source retained below.
 let drawingNumber = 0;
 const palettes = {
   fox: ['#f5b06d', '#ce5b42', '#813b36'],
@@ -35,7 +35,7 @@ const drawings = { fox, turtle, deer, boar, ape, fish };
 
 /** SVG is decorative: the surrounding UI supplies the creature's name and stats. */
 export function creatureArt(id, options = {}) {
-  if (['fox', 'turtle', 'deer'].includes(id)) {
+  if (['fox', 'turtle', 'deer', 'boar', 'ape', 'fish'].includes(id)) {
     const url = new URL(`../assets/${id}.png`, import.meta.url).href;
     return `<img src="${escapeAttribute(url)}" class="creature-art painted-art ${escapeAttribute(options.className || '')}" alt="" aria-hidden="true" draggable="false" width="1536" height="1024" />`;
   }

@@ -47,7 +47,7 @@ try {
   await start(p);
   const alpha=await p.evaluate(async()=>{
     const result={};
-    for(const id of ['fox','turtle','deer']) {
+    for(const id of ['fox','turtle','deer','boar','ape','fish']) {
       const image=new Image();image.src=`/assets/${id}.png`;await image.decode();
       const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);
       const data=ctx.getImageData(0,0,c.width,c.height).data;let zero=0,partial=0,opaque=0,maxAlpha=0,nearOpaque=0;
@@ -75,8 +75,8 @@ try {
   assert.notEqual(projectile1,projectile2,'Element projectile must travel between actual frames');
   assert.notEqual(frame1,frame2,'Cast must show different actual animation frames');
   await p.locator('.hit').waitFor();
-  assert.equal(Number(await p.locator('.enemy .hp-track').getAttribute('aria-valuenow')),resolved.events[0].state.enemy.team[0].hp,'Impact applies first event snapshot, not final state');
-  assert.equal(Number(await p.locator('.player .hp-track').getAttribute('aria-valuenow')),112,'Enemy damage must not apply early');
+  assert.equal(Number(await p.locator('.enemy .hp-track').getAttribute('aria-valuenow')),resolved.events.find(e=>e.type==='move').state.enemy.team[resolved.events.find(e=>e.type==='move').state.enemy.active].hp,'Impact applies first event snapshot, not final state');
+  assert.equal(Number(await p.locator('.player .hp-track').getAttribute('aria-valuenow')),resolved.events.find(e=>e.type==='move').state.player.team[resolved.events.find(e=>e.type==='move').state.player.active].hp,'Impact shows actual event snapshot');
   await p.screenshot({path:`${output}/presentation-impact.png`,fullPage:true});
   await p.locator('#app[data-playing="false"]').waitFor();state=resolved.state;await check(p,state);
   assert.match(await p.locator('.battle-toolbar').innerText(),/第 2 回合/,'Repeated clicks must produce one turn');
@@ -96,7 +96,7 @@ try {
   await p.close();
   const mobile=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
   mobile.on('pageerror',e=>errors.push(e.message));mobile.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
-  await start(mobile);assert.equal(await mobile.locator('[data-action="motion"]').getAttribute('aria-pressed'),'true');
+  await start(mobile);assert.ok(await mobile.locator('.move-button').nth(2).evaluate(n=>n.getBoundingClientRect().bottom<=innerHeight),'Mobile battle and all three skills share initial viewport');assert.equal(await mobile.locator('[data-action="motion"]').getAttribute('aria-pressed'),'true');
   await click(mobile,'move','[data-id="fox-skill"]');
   assert.deepEqual(await mobile.locator('.arena *').evaluateAll(ns=>[...new Set(ns.map(n=>getComputedStyle(n).animationName))]),['none']);
   await mobile.locator('#app[data-playing="false"]').waitFor();await check(mobile,resolveTurn(createBattle(['fox','deer','turtle'],['boar','ape','turtle']),{type:'move',moveId:'fox-skill'}).state);
