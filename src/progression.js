@@ -29,7 +29,7 @@ export function combatConfig(id, xp = 0, evolved = false) {
     if (id === 'fox') {move.name = '照夜焰'; move.power += 8;}
     if (id === 'turtle') {move.name = '镇澜潮'; move.effect = {type:'shield',value:24};}
     if (id === 'deer') {move.name = '青岚生息'; move.effect = {type:'heal',value:18};}
-    move.description = EVOLUTIONS[id].description;
+    move.description = {fox:'火属性攻击，灼伤三次，每次损失最大生命的 6%。',turtle:'水属性攻击，同时获得 24 点护盾。',deer:'木属性攻击，同时恢复 18 点生命，不超过上限。'}[id];
   }
   return c;
 }

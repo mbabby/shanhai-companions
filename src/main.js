@@ -4,7 +4,7 @@ import { creatureArt } from './art.js';
 import { combatConfig } from './progression.js';
 import { encodeSave, decodeSave, readSave, writeSave, restoreBackup, replaceSave, migrateSave, readLegacyOriginal } from './save.js';
 import { createAudio } from './audio.js';
-import { freshChapter, chooseStarter, visitNode, returnToMap, openParty, setTeam, startBond, answerBond, interactNode, evolveCompanion, beginEncounter, recordBattle, settleEncounter, showEnding, chapterObjective, ENCOUNTERS } from './chapter.js';
+import { freshChapter, chooseStarter, visitNode, returnToMap, openParty, setTeam, startBond, answerBond, interactNode, evolveCompanion, beginEncounter, recordBattle, settleEncounter, showEnding, chapterObjective, chapterNextStep, ENCOUNTERS } from './chapter.js';
 import { chapterView } from './chapter-view.js';
 import { startPlayback } from './playback.js';
 
@@ -77,7 +77,7 @@ function render(focus = false) {
   const previouslyFocused = document.activeElement?.dataset;
   const focusKey = previouslyFocused?.action ? { ...previouslyFocused } : null;
   const steps = ['初见', '寻水', '共鸣', '归泉'];
-  const active = run.phase === 'choose' ? 0 : run.milestones.includes('source') ? 3 : run.completed.includes('shrine') ? 2 : 1;
+  const active = run.phase === 'choose' ? 0 : run.milestones.includes('source') ? 4 : run.evolved.length ? 3 : run.milestones.includes('ridge') ? 2 : 1;
   const inBattle = run.phase === 'battle' || run.phase === 'end';
   app.classList.toggle('battle-mode', inBattle);
   app.dataset.playing = String(playing);
@@ -130,10 +130,10 @@ function battleView() {
   const b = run.battle; const active = b.player.team[b.player.active]; const c = combatConfig(active.id, active.xp || 0, active.evolved || false); const target = byId(b.enemy.team[b.enemy.active].id); const multiplier = effectiveness(c.element, target.element);
   const finished = b.winner && !playing;
   const encounter = ENCOUNTERS[run.battleId];
-  return `${heading('青岚谷 · 卷一 / 同行试炼', finished ? (b.winner === 'player' ? '山野认可了你们的默契。' : b.winner === 'draw' ? '旗鼓相当，亦是一次成长。' : '歇一歇，再出发。') : encounter.name, finished ? '本次试炼已结束。返回舆图继续探索；也可重温试炼。首次胜利的奖励仅领取一次。' : '循五行，借山势。与你的伙伴一起，回应守关者的考验。')}
+  return `${heading('青岚谷 · 卷一 / 同行试炼', finished ? (b.winner === 'player' ? '山野认可了你们的默契。' : b.winner === 'draw' ? '旗鼓相当，亦是一次成长。' : '歇一歇，再出发。') : encounter.name, finished ? '本次试炼已结束。可继续探索、调整队伍或重温试炼；下次入场全员恢复生命与技能。首次奖励仅领取一次。' : '循五行，借山势。与你的伙伴一起，回应守关者的考验。')}
     <div class="battle-toolbar"><span>${encounter.name} <span class="toolbar-divider">/</span> 第 ${b.turn} 回合</span><div><button data-action="speed" aria-label="切换演出速度，当前${playbackSpeed}倍">演出 ×${playbackSpeed}</button><button data-action="motion" aria-pressed="${reducedMotion}">减少动态 ${reducedMotion ? '开' : '关'}</button></div></div>
     ${!finished ? `<div class="encounter-telegraph" role="status">${escapeHtml(encounterTelegraph(b))}</div>` : ''}<div class="arena" data-playing="${playing}" data-reduced-motion="${reducedMotion}"><div class="arena-caption"><span>${encounter.name}</span><span>三兽同行</span></div><div class="arena-combatants">${combatant(b.player, false)}<div class="versus" aria-hidden="true">交<br>锋</div>${combatant(b.enemy, true)}</div><div class="battle-announcement" role="status" aria-live="polite">${escapeHtml(playing ? eventText(currentEvent) : finished ? '本次交锋已结束，可在下方重试或返回舆图。' : '轮到你了，选择下方技能或换兽。')}</div></div>
-    ${finished ? `<div class="result-panel"><span class="result-seal">${b.winner === 'player' ? '同行' : '再会'}</span><div><strong>${b.winner === 'player' ? '交锋完成 · 已记入本次旅程' : '每次交锋，都是新的发现'}</strong><p>${b.winner === 'player' ? (run.gains.length ? '首次奖励已记入手记；新等级在下次挑战生效。' : '重温试炼完成；首次奖励已经领取，本次不会重复发放。') : '观察五行克制，利用护盾与换兽，试试另一种节奏。'}</p><ul class="growth-results">${run.gains.map((gain) => `<li>${byId(gain.id).name} +${gain.xpGained} 经验 · Lv.${gain.fromLevel}${gain.toLevel > gain.fromLevel ? ` → Lv.${gain.toLevel}` : ''}${gain.mastered ? ' · 特色技能精通！' : ''}${progress[gain.id] === 90 ? ' · 已满级' : ''}</li>`).join('')}</ul></div></div><div class="result-actions"><button class="primary-button" data-action="start-battle" data-id="${run.battleId}">再次挑战</button><button class="secondary-button" data-action="map">返回谷中舆图</button>${run.milestones.includes('source') ? '<button class="primary-button" data-action="ending">听见归来的水声</button>' : ''}</div>` : `<div class="battle-controls">${playing ? `<div class="playback-status" role="status"><span><strong>已收到：${escapeHtml(submittedAction)}</strong><small>正在演出 ${playbackStep}/${playbackTotal} · 无需重复点击</small></span><button data-action="skip-playback">立即结算 →</button></div>` : `<p class="turn-ready" role="status">轮到你了 · 选择技能或换兽</p>`}<div class="moves-heading"><h3>${c.name}的行动 <small>${playing ? '回合演出中…' : '选择一个技能'}</small></h3><span class="matchup">${c.element} 对 ${target.element} · ${multiplier === 1.5 ? '克制 ×1.5' : multiplier === 0.75 ? '被克制 ×0.75' : '普通 ×1'}</span></div><div class="move-grid">${c.moves.map((move, index) => {
+    ${finished ? `<div class="result-panel"><span class="result-seal">${b.winner === 'player' ? '同行' : '再会'}</span><div><strong>${b.winner === 'player' ? '交锋完成 · 已记入本次旅程' : '每次交锋，都是新的发现'}</strong><p>${b.winner === 'player' ? (run.gains.length ? '首次奖励已记入手记；新等级在下次挑战生效。' : '重温试炼完成；首次奖励已经领取，本次不会重复发放。') : '观察五行克制，利用护盾与换兽，试试另一种节奏。'}</p><ul class="growth-results">${run.gains.map((gain) => `<li>${byId(gain.id).name} +${gain.xpGained} 经验 · Lv.${gain.fromLevel}${gain.toLevel > gain.fromLevel ? ` → Lv.${gain.toLevel}` : ''}${gain.mastered ? ' · 特色技能精通！' : ''}${progress[gain.id] === 90 ? ' · 已满级' : ''}</li>`).join('')}</ul></div></div><div class="result-actions">${b.winner === 'player' && !run.milestones.includes('source') ? `<button class="primary-button" data-action="${chapterNextStep(run).action}" data-id="${chapterNextStep(run).id}">${chapterNextStep(run).label}</button>` : ''}<button class="secondary-button" data-action="party">调整队伍</button><button class="secondary-button" data-action="start-battle" data-id="${run.battleId}">再次挑战</button><button class="secondary-button" data-action="map">返回谷中舆图</button>${run.milestones.includes('source') ? '<button class="primary-button" data-action="ending">听见归来的水声</button>' : ''}</div>` : `<div class="battle-controls">${playing ? `<div class="playback-status" role="status"><span><strong>已收到：${escapeHtml(submittedAction)}</strong><small>正在演出 ${playbackStep}/${playbackTotal} · 无需重复点击</small></span><button data-action="skip-playback">立即结算 →</button></div>` : `<p class="turn-ready" role="status">轮到你了 · 选择技能或换兽</p>`}<div class="moves-heading"><h3>${c.name}的行动 <small>${playing ? '回合演出中…' : '选择一个技能'}</small></h3><span class="matchup">${c.element} 对 ${target.element} · ${multiplier === 1.5 ? '克制 ×1.5' : multiplier === 0.75 ? '被克制 ×0.75' : '普通 ×1'}</span></div><div class="move-grid">${c.moves.map((move, index) => {
       const cooldown = active.cooldowns[move.id] || 0;
       const preview = !playing && !b.winner ? previewMove(b, move.id) : null;
       const effect = move.effect;
@@ -301,10 +301,10 @@ app.addEventListener('click', async (event) => {
     else if (action === 'visit') { run = visitNode(run, id); ui = {}; }
     else if (action === 'party' || action === 'bestiary') { run = openParty(run); ui = action === 'bestiary' ? { tab: 'bestiary' } : {}; }
     else if (action === 'encounter') run = startBond(run, id);
-    else if (action === 'bond') { run = answerBond(run, id); focus = false; if (!run.encounter) audio.play({ type: 'bond' }); }
+    else if (action === 'bond') { const previousBond = run.bond; run = answerBond(run, id); focus = run.bond !== previousBond; if (!run.encounter) audio.play({ type: 'bond' }); }
     else if (action === 'interact') ({ run, progress } = interactNode(run, id, progress));
-    else if (action === 'lead') { run = setTeam(run, [id, ...run.team.filter(member => member !== id)]); focus = false; }
-    else if (action === 'bench') run = setTeam(run, run.team.filter(member => member !== id));
+    else if (action === 'lead') { run = setTeam(run, [id, ...run.team.filter(member => member !== id)]); ui.replaceId = null; focus = false; }
+    else if (action === 'bench') { run = setTeam(run, run.team.filter(member => member !== id)); ui.replaceId = null; }
     else if (action === 'add-party') { if (run.team.length < 3) run = setTeam(run, [...run.team, id]); else ui.replaceId = id; }
     else if (action === 'replace') { run = setTeam(run, run.team.map(member => member === id ? ui.replaceId : member)); ui.replaceId = null; }
     else if (action === 'cancel-replace') ui.replaceId = null;

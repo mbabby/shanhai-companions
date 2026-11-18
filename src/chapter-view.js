@@ -1,7 +1,7 @@
 import { CREATURES } from './data.js';
 import { creatureArt } from './art.js';
 import { combatConfig, EVOLUTIONS } from './progression.js';
-import { NODES, HABITS, ENCOUNTERS, ENDING, nodeStatus, bondStatus, encounterStatus, chapterObjective } from './chapter.js';
+import { NODES, HABITS, ENCOUNTERS, ENDING, nodeStatus, bondStatus, encounterStatus, chapterObjective, chapterNextStep } from './chapter.js';
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clueNames = {'old-waterway':'旧水道图：山隘、苇泽与源头相连。','root-channel':'根下石渠：水并未消失，而是改变了方向。','water-trace':'银白水痕：泉水正沿裂隙逆流。','stone-rhythm':'石环节拍：单数回合石甲护体，偶数寻找进攻机会。','reverse-tide':'苇泽水位：偶数回合急流压低速度。','spring-gate':'泉闸旧痕：每第三回合泉压喷涌，提前护盾。','valley-picture':'青岚旧画：水盛时的谷景，值得留给未来。'};
 const creature = id => CREATURES.find(c => c.id === id);
@@ -10,7 +10,9 @@ const title = (kicker, name, text) => `<div class="section-intro"><span class="e
 export function chapterView(run, progress, ui = {}) {
   const art = (id, evolved = run.evolved.includes(id)) => creatureArt(id, {evolved});
   const nav = `<nav class="chapter-nav" aria-label="旅程导航">${[['map','谷中舆图'],['party','同行队伍'],['bestiary','六兽图鉴']].map(([action,label])=>`<button data-action="${action}" aria-current="${(ui.tab === 'bestiary' ? action === 'bestiary' : run.phase === action) ? 'page' : 'false'}">${label}</button>`).join('')}</nav>`;
-  const objective = `<div class="chapter-objective"><strong>此刻的方向</strong>${escape(chapterObjective(run))}</div>`;
+  const next = chapterNextStep(run);
+  const nextButton = next.action && !(next.action==='visit' && run.phase==='node' && run.node===next.id) && !(next.action==='party' && run.phase==='party') ? button(next.action,next.label,next.id) : '';
+  const objective = `<div class="chapter-objective"><strong>此刻的方向</strong>${escape(chapterObjective(run))}${nextButton}</div>`;
   const note = run.note ? `<p class="chapter-note" role="status">${escape(run.note)}</p>` : '';
   const prefix = nav + objective;
   if (ui.evolutionPreview || ui.evolutionReveal) {
@@ -20,14 +22,16 @@ export function chapterView(run, progress, ui = {}) {
   }
   if (ui.tab === 'bestiary' || run.phase === 'party') {
     const codex = ui.tab === 'bestiary';
-    return `${prefix}${title(codex ? 'THE SIX COMPANIONS' : 'BETTER TOGETHER',codex ? '六种灵性，一卷山海。' : '同行三席，随心结阵。',codex ? `已相遇 ${run.discovered.length}/6 · 已结契 ${run.owned.length}/6。循习性而来，余下的缘分仍在谷中。` : '第一席为领队。三位伙伴上阵，其余在后备中休息；战斗外可自由替换，不消耗经验。')}${note}${ui.replaceId ? `<div class="party-replace"><strong>让${creature(ui.replaceId).name}替换哪位伙伴？</strong><div class="result-actions">${run.team.map(id=>button('replace',creature(id).name,id)).join('')}${button('cancel-replace','取消')}</div></div>` : ''}<div class="collection-grid">${CREATURES.map(c=> {
+    const cards = codex ? CREATURES : [...run.team.map(creature),...CREATURES.filter(c=>!run.team.includes(c.id))];
+    const origin = NODES.find(n=>n.id===run.node);
+    return `${prefix}${title(codex ? 'THE SIX COMPANIONS' : 'BETTER TOGETHER',codex ? '六种灵性，一卷山海。' : '同行三席，随心结阵。',codex ? `已相遇 ${run.discovered.length}/6 · 已结契 ${run.owned.length}/6。循习性而来，余下的缘分仍在谷中。` : `当前同行 ${run.team.length}/3 · 后备 ${run.owned.length-run.team.length}。第一席为领队；战斗外可自由替换，不消耗经验。`)}${origin ? button('visit',`返回${origin.name}`,origin.id) : ''}${note}${ui.replaceId ? `<div class="party-replace"><strong>让${creature(ui.replaceId).name}替换哪位伙伴？</strong><div class="result-actions">${run.team.map(id=>button('replace',creature(id).name,id)).join('')}${button('cancel-replace','取消')}</div></div>` : ''}<div class="collection-grid">${cards.map(c=> {
       const owned=run.owned.includes(c.id), index=run.team.indexOf(c.id), cfg=combatConfig(c.id,progress[c.id]||0,run.evolved.includes(c.id));
       const habitat=NODES.filter(n=>n.species.includes(c.id)).map(n=>n.name).join('、');
       return `<article class="collection-card ${owned?'':'unowned'}"><span class="party-slot-label">${owned ? index>=0 ? `同行 0${index+1}${index===0?' · 领队':''}` : '后备伙伴' : run.discovered.includes(c.id)?'已发现 · 待结契':'待相遇'}</span>${art(c.id)}<h3>${cfg.name}<span class="element">${cfg.element}</span></h3><p>${cfg.species} · ${run.evolved.includes(c.id)?'已进化':'初生形态'}<br>${owned ? `Lv.${cfg.level} · 经验 ${progress[c.id]||0}/90<br>生命 ${cfg.hp} · 攻击 ${cfg.attack} · 防御 ${cfg.defense}` : `出没：${habitat}`}</p>${codex ? `<p>${escape(c.description)}<br>${escape(HABITS[c.id].clue)}</p>` : owned ? `<div class="card-controls">${index>0?button('lead','设为领队',c.id):''}${index<0?button('add-party',run.team.length<3?'加入同行':'替换同行',c.id):run.team.length>1?button('bench','移至后备',c.id):''}</div>` : ''}</article>`;
     }).join('')}</div>`;
   }
   if (run.phase === 'ending') return `${prefix}${title('CHAPTER ONE · COMPLETE',ENDING.title,'这一次，青岚谷记住了你们的名字。')}<div class="ending-panel"><span class="ending-seal">青岚<br>同行</span>${ENDING.paragraphs.map(p=>`<p>${escape(p)}</p>`).join('')}<div class="ending-companions">${run.team.map(id=>art(id)).join('')}</div><p>已结契 ${run.owned.length}/6 · 已进化 ${run.evolved.length}/3<br>三场守关试炼已完成</p><div class="result-actions">${button('map','留在谷中，补全手记')}${button('party','与伙伴再出发')}</div></div>`;
-  if (run.phase === 'map') return `${prefix}${title('QINGLAN VALLEY · CHAPTER I','循水入山，寻一谷清响。','溪流正在变浅。走访村落、林地与浅溪，结识伙伴，再沿山隘追寻断流的缘由。虚线标记为可选支路。')}<div class="chapter-map"><span class="map-water" aria-hidden="true"></span>${NODES.map((n,i)=>{const s=nodeStatus(run,n.id);return `<button class="map-node ${n.optional?'optional':''} ${run.visited.includes(n.id)?'visited':''}" data-action="visit" data-id="${n.id}" ${s.unlocked?'':'disabled'} aria-label="${n.name}，${s.unlocked?n.subtitle:s.reason}"><span class="map-index">${n.optional?'支路':`0${i+1}`} / ${s.completed?'已完成':s.unlocked?'可探索':'未开放'}</span><strong>${n.name}</strong><small>${escape(s.unlocked?n.subtitle:s.reason)}</small></button>`;}).join('')}</div><div class="map-legend"><span>◇ 尚未走访</span><span>✓ 已走访</span><span>虚线 · 可选支路</span></div>${note}${run.milestones.includes('source')?button('ending','重读青岚谷尾声'):''}<details class="chapter-panel"><summary>录灵手记 · ${run.clues.length} 条线索</summary><ul class="clue-list">${run.clues.map(c=>`<li>${escape(clueNames[c] || c)}</li>`).join('')||'<li>与村中人交谈、回应山野，将找到第一条线索。</li>'}</ul></details>`;
+  if (run.phase === 'map') return `${prefix}${title('QINGLAN VALLEY · CHAPTER I','循水入山，寻一谷清响。','溪流正在变浅。走访村落、林地与浅溪，结识伙伴，再沿山隘追寻断流的缘由。虚线标记为可选支路。')}<div class="chapter-map"><span class="map-water" aria-hidden="true"></span>${NODES.map((n,i)=>{const s=nodeStatus(run,n.id);return `<button class="map-node ${n.optional?'optional':''} ${run.visited.includes(n.id)?'visited':''}" data-action="visit" data-id="${n.id}" ${s.unlocked?'':'disabled'} aria-label="${n.name}，${s.unlocked?n.subtitle:s.reason}"><span class="map-index">${n.optional?'支路':`0${i+1}`} / ${n.species.length ? `${s.completed?'线索已记录':'待寻线索'} · 结契 ${n.species.filter(id=>run.owned.includes(id)).length}/${n.species.length}` : s.completed?'已完成':s.unlocked?'可探索':'未开放'}</span><strong>${n.name}</strong><small>${escape(s.unlocked?n.subtitle:s.reason)}</small></button>`;}).join('')}</div><div class="map-legend"><span>◇ 尚未走访</span><span>✓ 已走访</span><span>虚线 · 可选支路</span></div>${note}${run.milestones.includes('source')?button('ending','重读青岚谷尾声'):''}<details class="chapter-panel"><summary>录灵手记 · ${run.clues.length} 条线索</summary><ul class="clue-list">${run.clues.map(c=>`<li>${escape(clueNames[c] || c)}</li>`).join('')||'<li>与村中人交谈、回应山野，将找到第一条线索。</li>'}</ul></details>`;
   const node=NODES.find(n=>n.id===run.node);
   if (!node) return prefix;
   if(run.encounter){

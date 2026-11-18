@@ -68,3 +68,19 @@ test('team edits after results clear settled battle and refuse unclaimed rewards
  let progress;({run,progress}=c.settleEncounter(run,{}));
  const changed=c.setTeam(run,team);assert.deepEqual(changed.team,team);assert.equal(changed.phase,'map');assert.equal(changed.battle,null);assert.equal(changed.battleId,null);assert.equal(c.validateChapter(changed,progress),true);
 });
+test('next steps guide party shortages, explicit evolution and ending',()=>{
+ let run=recruit(recruit(c.chooseStarter(c.freshChapter(),'fox'),'deer'),'turtle');
+ run=c.setTeam(run,['fox']); assert.equal(c.chapterNextStep(run).action,'party'); assert.match(c.chapterObjective(run),/1\/3/);
+ run=c.setTeam(run,run.owned); run=c.visitNode(run,'ridge'); let progress;
+ ({run,progress}=c.settleEncounter(won(c.beginEncounter(run,{},'ridge')),{}));
+ assert.equal(c.chapterNextStep(run).id,'shrine');run=c.visitNode(run,'shrine');({run,progress}=c.interactNode(run,'attune',progress));
+ assert.match(c.chapterObjective(run),/进化/);assert.equal(c.chapterNextStep(run).id,'shrine');
+ for(const id of c.STARTERS)run=c.evolveCompanion(run,progress,id);
+ assert.equal(c.chapterNextStep(run).id,'marsh');
+ for(const id of ['marsh','source']){run=c.visitNode(run,id);({run,progress}=c.settleEncounter(won(c.beginEncounter(run,progress,id)),progress));}
+ assert.equal(c.chapterNextStep(run).action,'ending');run=c.showEnding(run);assert.equal(c.chapterNextStep(run).action,'bestiary');
+});
+test('contract feedback distinguishes party from reserves',()=>{
+ let run=recruit(c.chooseStarter(c.freshChapter(),'fox'),'deer');assert.match(run.note,/阿蜀.*同行.*2\/3/);
+ run=recruit(recruit(run,'turtle'),'boar');assert.match(run.note,/团掘.*后备.*同行队伍/);
+});
