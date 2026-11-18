@@ -44,3 +44,7 @@ The original optional marsh wording observation has been corrected in fresh comb
 Re-reviewed the `setTeam` correction: result-phase edits now call `returnToMap`, which rejects unclaimed rewards and clears a settled retained battle before assigning the new team. The focused regression covers both rejection and valid post-settlement reordering. Root reports the complete suite at 81/81 passing; no redundant broad test run was performed by this reviewer.
 
 The final `creatureArt` change selects the three `*-evolved.png` files only for explicit `evolved === true` on supported starters and preserves normal artwork for other species. All three mapped files exist. Fresh UI code includes correct dual-effect actor targeting and readable clue labels. No new actionable issue was found in these finishing changes. Visual quality and rendered browser acceptance remain covered by the separate art/QA reports.
+
+### Final resource-reference follow-up
+
+Accepted the narrow CSS correction: `.chapter-map` now references existing `assets/battlefield.png` relative to `src/style.css`; no `battle-bg.png` reference remains in that stylesheet. The gradient/layout are preserved. The `index.html` description now accurately describes eight locations, six species and three trials. No new review blocker. Root reports a fresh 81-test pass and successful build; resource/defeat browser rechecks remain with QA, and no broad tests were repeated here.

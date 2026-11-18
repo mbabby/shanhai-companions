@@ -11,3 +11,5 @@ Implemented Task 3 in `src/main.js`, `src/chapter-view.js`, `src/style.css`.
 - First victory settlement calls the domain once. End panel leads back to map or narrative ending; postgame collection and replay use domain progression without duplicate rewards.
 
 Validation performed by UI agent: `node --check src/main.js`, `node --check src/chapter-view.js`, `npm run build`, `npm test` (80/80 passed at time of run). Dedicated browser QA is owned by the independent QA agent; see its final report for desktop/mobile journeys and screenshots. No deployment or human playtime claim. Evolution image files are supplied by art agent; UI uses the agreed art API.
+
+Browser QA follow-up: corrected the atlas background reference from nonexistent `battle-bg.png` to existing `battlefield.png`, preserving the gradient overlay and layout. Focused resource/console recheck delegated to QA; no other visual redesign.

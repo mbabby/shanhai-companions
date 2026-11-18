@@ -1,17 +1,21 @@
 {
   "name": "shanhai-companions",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "node scripts/serve.js",
     "test": "node --test tests/*.test.js",
-    "test:browser": "node tests/browser-smoke.mjs",
-    "test:presentation": "node tests/browser-presentation.mjs",
-    "test:save": "node tests/browser-save.mjs",
+    "test:browser": "node tests/browser-chapter.mjs",
     "build": "node scripts/build.js",
-    "preview": "node scripts/serve.js dist"
+    "preview": "node scripts/serve.js dist",
+    "test:chapter": "node tests/browser-chapter.mjs",
+    "test:legacy:browser": "node tests/browser-smoke.mjs",
+    "test:legacy:presentation": "node tests/browser-presentation.mjs",
+    "test:legacy:save": "node tests/browser-save.mjs"
   },
   "license": "MIT"
 }
