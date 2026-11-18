@@ -6,6 +6,7 @@ import { encodeSave, decodeSave, readSave, writeSave, restoreBackup, replaceSave
 import { createAudio } from './audio.js';
 import { freshChapter, chooseStarter, visitNode, returnToMap, openParty, setTeam, startBond, answerBond, interactNode, evolveCompanion, beginEncounter, recordBattle, settleEncounter, showEnding, chapterObjective, ENCOUNTERS } from './chapter.js';
 import { chapterView } from './chapter-view.js';
+import { startPlayback } from './playback.js';
 
 const app = document.querySelector('#app');
 const byId = (id) => CREATURES.find((creature) => creature.id === id);
@@ -13,7 +14,10 @@ const elementClass = { 金: 'metal', 木: 'wood', 水: 'water', 火: 'fire', 土
 let run = freshChapter();
 let ui = {};
 let playing = false;
-let playbackVersion = 0;
+let playback = null;
+let playbackStep = 0, playbackTotal = 0;
+let submittedAction = '';
+let turnSummary = [];
 let playbackSpeed = 1;
 let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let currentEvent = null;
@@ -128,15 +132,15 @@ function battleView() {
   const encounter = ENCOUNTERS[run.battleId];
   return `${heading('青岚谷 · 卷一 / 同行试炼', finished ? (b.winner === 'player' ? '山野认可了你们的默契。' : b.winner === 'draw' ? '旗鼓相当，亦是一次成长。' : '歇一歇，再出发。') : encounter.name, finished ? '本次试炼已结束。返回舆图继续探索；也可重温试炼。首次胜利的奖励仅领取一次。' : '循五行，借山势。与你的伙伴一起，回应守关者的考验。')}
     <div class="battle-toolbar"><span>${encounter.name} <span class="toolbar-divider">/</span> 第 ${b.turn} 回合</span><div><button data-action="speed" aria-label="切换演出速度，当前${playbackSpeed}倍">演出 ×${playbackSpeed}</button><button data-action="motion" aria-pressed="${reducedMotion}">减少动态 ${reducedMotion ? '开' : '关'}</button></div></div>
-    ${!finished ? `<div class="encounter-telegraph" role="status">${escapeHtml(encounterTelegraph(b))}</div>` : ''}<div class="arena" data-playing="${playing}" data-reduced-motion="${reducedMotion}"><div class="arena-caption"><span>${encounter.name}</span><span>三兽同行</span></div><div class="arena-combatants">${combatant(b.player, false)}<div class="versus" aria-hidden="true">交<br>锋</div>${combatant(b.enemy, true)}</div><div class="battle-announcement" role="status" aria-live="polite">${escapeHtml(eventText(currentEvent))}</div></div>
-    ${finished ? `<div class="result-panel"><span class="result-seal">${b.winner === 'player' ? '同行' : '再会'}</span><div><strong>${b.winner === 'player' ? '交锋完成 · 已记入本次旅程' : '每次交锋，都是新的发现'}</strong><p>${b.winner === 'player' ? (run.gains.length ? '首次奖励已记入手记；新等级在下次挑战生效。' : '重温试炼完成；首次奖励已经领取，本次不会重复发放。') : '观察五行克制，利用护盾与换兽，试试另一种节奏。'}</p><ul class="growth-results">${run.gains.map((gain) => `<li>${byId(gain.id).name} +${gain.xpGained} 经验 · Lv.${gain.fromLevel}${gain.toLevel > gain.fromLevel ? ` → Lv.${gain.toLevel}` : ''}${gain.mastered ? ' · 特色技能精通！' : ''}${progress[gain.id] === 90 ? ' · 已满级' : ''}</li>`).join('')}</ul></div></div><div class="result-actions"><button class="primary-button" data-action="start-battle" data-id="${run.battleId}">再次挑战</button><button class="secondary-button" data-action="map">返回谷中舆图</button>${run.milestones.includes('source') ? '<button class="primary-button" data-action="ending">听见归来的水声</button>' : ''}</div>` : `<div class="battle-controls"><div class="moves-heading"><h3>${c.name}的行动 <small>${playing ? '回合演出中…' : '选择一个技能'}</small></h3><span class="matchup">${c.element} 对 ${target.element} · ${multiplier === 1.5 ? '克制 ×1.5' : multiplier === 0.75 ? '被克制 ×0.75' : '普通 ×1'}</span></div><div class="move-grid">${c.moves.map((move, index) => {
+    ${!finished ? `<div class="encounter-telegraph" role="status">${escapeHtml(encounterTelegraph(b))}</div>` : ''}<div class="arena" data-playing="${playing}" data-reduced-motion="${reducedMotion}"><div class="arena-caption"><span>${encounter.name}</span><span>三兽同行</span></div><div class="arena-combatants">${combatant(b.player, false)}<div class="versus" aria-hidden="true">交<br>锋</div>${combatant(b.enemy, true)}</div><div class="battle-announcement" role="status" aria-live="polite">${escapeHtml(playing ? eventText(currentEvent) : finished ? '本次交锋已结束，可在下方重试或返回舆图。' : '轮到你了，选择下方技能或换兽。')}</div></div>
+    ${finished ? `<div class="result-panel"><span class="result-seal">${b.winner === 'player' ? '同行' : '再会'}</span><div><strong>${b.winner === 'player' ? '交锋完成 · 已记入本次旅程' : '每次交锋，都是新的发现'}</strong><p>${b.winner === 'player' ? (run.gains.length ? '首次奖励已记入手记；新等级在下次挑战生效。' : '重温试炼完成；首次奖励已经领取，本次不会重复发放。') : '观察五行克制，利用护盾与换兽，试试另一种节奏。'}</p><ul class="growth-results">${run.gains.map((gain) => `<li>${byId(gain.id).name} +${gain.xpGained} 经验 · Lv.${gain.fromLevel}${gain.toLevel > gain.fromLevel ? ` → Lv.${gain.toLevel}` : ''}${gain.mastered ? ' · 特色技能精通！' : ''}${progress[gain.id] === 90 ? ' · 已满级' : ''}</li>`).join('')}</ul></div></div><div class="result-actions"><button class="primary-button" data-action="start-battle" data-id="${run.battleId}">再次挑战</button><button class="secondary-button" data-action="map">返回谷中舆图</button>${run.milestones.includes('source') ? '<button class="primary-button" data-action="ending">听见归来的水声</button>' : ''}</div>` : `<div class="battle-controls">${playing ? `<div class="playback-status" role="status"><span><strong>已收到：${escapeHtml(submittedAction)}</strong><small>正在演出 ${playbackStep}/${playbackTotal} · 无需重复点击</small></span><button data-action="skip-playback">立即结算 →</button></div>` : `<p class="turn-ready" role="status">轮到你了 · 选择技能或换兽</p>`}<div class="moves-heading"><h3>${c.name}的行动 <small>${playing ? '回合演出中…' : '选择一个技能'}</small></h3><span class="matchup">${c.element} 对 ${target.element} · ${multiplier === 1.5 ? '克制 ×1.5' : multiplier === 0.75 ? '被克制 ×0.75' : '普通 ×1'}</span></div><div class="move-grid">${c.moves.map((move, index) => {
       const cooldown = active.cooldowns[move.id] || 0;
       const preview = !playing && !b.winner ? previewMove(b, move.id) : null;
       const effect = move.effect;
       const prediction = move.power ? (preview ? `预估生命 −${preview.hpDamage}${preview.shieldDamage ? ` · 护盾 −${preview.shieldDamage}` : ''}` : '等待回合结算') : effect?.type === 'heal' ? `恢复生命 +${Math.min(effect.value, active.maxHp - active.hp)}` : `护盾 ${effect?.value ?? 0}`;
-      return `<button class="move-button move-${elementClass[c.element]}" data-action="move" data-id="${move.id}" ${cooldown || playing ? 'disabled' : ''}><span class="move-name"><small>0${index + 1}</small>${move.name}<span>${cooldown ? `冷却 ${cooldown}` : '可使用'}</span></span><span class="move-prediction">${prediction}</span><span class="move-description">${move.description}</span><span class="move-meta">${cooldown ? `尚需 ${cooldown} 回合 · ` : ''}${move.power ? `威力 ${move.power} · ` : ''}${move.cooldown ? `冷却 ${move.cooldown} 回合` : '无冷却'}</span></button>`;
+      return `<button class="move-button move-${elementClass[c.element]}" data-action="move" data-id="${move.id}" ${cooldown || playing ? 'disabled' : ''}><span class="move-name"><small>0${index + 1}</small>${move.name}<span>${playing ? '演出中' : cooldown ? `冷却 ${cooldown}` : '可使用'}</span></span><span class="move-prediction">${prediction}</span><span class="move-description">${move.description}</span><span class="move-meta">${!playing && cooldown ? `尚需 ${cooldown} 回合 · ` : ''}${move.power ? `威力 ${move.power} · ` : ''}${move.cooldown ? `冷却 ${move.cooldown} 回合` : '无冷却'}</span></button>`;
     }).join('')}</div><p class="preview-note">预估基于当前生命与护盾；先手、换兽或状态变化可能改变实际结果。</p><div class="switch-row"><span>换兽<small>消耗本回合</small></span>${b.player.team.map((m, index) => `<button class="switch-button" data-action="switch" data-index="${index}" ${playing || index === b.player.active || m.hp <= 0 ? 'disabled' : ''}>${art(m.id, m.evolved || false)}<span>${byId(m.id).name}<small>${m.hp <= 0 ? '已倒下' : index === b.player.active ? `出战中 · ${m.hp}/${m.maxHp}` : `${m.hp}/${m.maxHp}`}</small></span>${badge(byId(m.id).element)}</button>`).join('')}</div><p class="feedback" role="status">${escapeHtml(run.note)}</p></div>`}
-    <details class="battle-log"><summary>交锋手记 <span>${b.log.length} 条记录</span></summary><ol>${b.log.slice(-12).reverse().map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ol></details>${cycle()}`;
+    ${!playing && turnSummary.length ? `<div class="turn-recap"><strong>上一回合发生了什么</strong><ul>${turnSummary.map(line=>`<li>${escapeHtml(line)}</li>`).join('')}</ul></div>` : ''}<details class="battle-log"><summary>交锋手记 <span>${b.log.length} 条记录</span></summary><ol>${b.log.slice(-12).reverse().map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ol></details>${cycle()}`;
 }
 function animateEvent(event, phase) {
   const source = app.querySelector(`[data-side="${event.side}"]`);
@@ -159,7 +163,7 @@ function animateEvent(event, phase) {
       const projectile = document.createElement('span');
       projectile.className = `element-projectile projectile-${elementClass[byId(event.actorId).element]}`;
       projectile.setAttribute('aria-hidden', 'true');
-      projectile.style.cssText = `left:${startX - bounds.left}px;top:${startY - bounds.top}px;--travel-x:${endX - startX}px;--travel-y:${endY - startY}px;--travel-angle:${Math.atan2(endY - startY, endX - startX)}rad;animation-duration:${380 / playbackSpeed}ms`;
+      projectile.style.cssText = `left:${startX - bounds.left}px;top:${startY - bounds.top}px;--travel-x:${endX - startX}px;--travel-y:${endY - startY}px;--travel-angle:${Math.atan2(endY - startY, endX - startX)}rad;animation-duration:${240 / playbackSpeed}ms`;
       arena.append(projectile);
     }
   }
@@ -187,47 +191,62 @@ function animateEvent(event, phase) {
 }
 async function playTurn(action) {
   if (playing) return;
-  playing = true; // Lock before resolving or awaiting; queued clicks cannot submit a second turn.
-  const version = ++playbackVersion;
-  let result;
-  try { result = resolveTurn(run.battle, action); }
-  catch (error) { playing = false; run.note = error.message; render(); return; }
-  run.note = '';
+  playing = true;
+  let result, completedRun, completedProgress = progress;
+  try {
+    result = resolveTurn(run.battle, action);
+    completedRun = recordBattle(run, result.state);
+    if (completedRun.phase === 'end') ({ run: completedRun, progress: completedProgress } = settleEncounter(completedRun, progress));
+  } catch (error) { playing = false; run.note = error.message; render(); return; }
+  const actor = run.battle.player.team[run.battle.player.active];
+  submittedAction = action.type === 'switch' ? `换上${byId(run.team[action.index]).name}` : combatConfig(actor.id, actor.xp, actor.evolved || false).moves.find(move => move.id === action.moveId).name;
+  const events = result.events.filter(event => event.type !== 'roundEnd');
+  playbackStep = 0; playbackTotal = events.length; turnSummary = []; run.note = '';
+  const task = startPlayback({
+    complete(reason) {
+      // Invalidate the animation before installing the complete, already-resolved turn.
+      playing = false; currentEvent = null; playback = null;
+      const marker = result.state.log.lastIndexOf(`第 ${run.battle.turn} 回合`);
+      turnSummary = result.state.log.slice(marker < 0 ? -4 : marker + 1).filter(line => !line.startsWith('地形：'));
+      run = completedRun; progress = completedProgress;
+      if (reason === 'error' || reason === 'timeout') run.note = '演出已自动结束，本回合已结算，可以继续操作。';
+      persist(); render(Boolean(run.battle.winner));
+      try { if (run.battle.winner) audio.play({ type: run.battle.winner === 'player' ? 'victory' : 'defeat' }); } catch { /* Sound must not lock combat. */ }
+    },
+    async animate(isActive) {
+      for (const [index, event] of events.entries()) {
+        if (!isActive()) return;
+        playbackStep = index + 1; currentEvent = event;
+        render();
+        audio.play(event);
+        animateEvent(event, 'windup');
+        if (event.type === 'move') await delay((reducedMotion ? 30 : 240) / playbackSpeed);
+        if (!isActive()) return;
+        const oldBars = [...app.querySelectorAll('.hp-track > span, .shield-track > span')].map(bar => bar.style.width);
+        run.battle = event.state;
+        render();
+        const bars = [...app.querySelectorAll('.hp-track > span, .shield-track > span')];
+        const newWidths = bars.map(bar => bar.style.width);
+        bars.forEach((bar, i) => { bar.style.width = oldBars[i] || newWidths[i]; });
+        app.querySelector('.arena')?.getBoundingClientRect();
+        bars.forEach((bar, i) => { bar.style.width = newWidths[i]; });
+        animateEvent(event, 'impact');
+        await delay((reducedMotion ? 40 : event.type === 'move' ? 320 : 180) / playbackSpeed);
+      }
+    },
+  });
+  playback = task;
   render();
-  for (const event of result.events) {
-    if (version !== playbackVersion) return;
-    if (event.type === 'roundEnd') continue;
-    currentEvent = event;
-    audio.play(event);
-    const banner = app.querySelector('.battle-announcement');
-    if (banner) banner.textContent = eventText(event);
-    animateEvent(event, 'windup');
-    if (event.type === 'move') await delay((reducedMotion ? 100 : 380) / playbackSpeed);
-    if (version !== playbackVersion) return;
-    const oldBars = [...app.querySelectorAll('.hp-track > span, .shield-track > span')].map((bar) => bar.style.width);
-    run.battle = event.state;
-    render();
-    const bars = [...app.querySelectorAll('.hp-track > span, .shield-track > span')];
-    const newWidths = bars.map((bar) => bar.style.width);
-    bars.forEach((bar, i) => { bar.style.width = oldBars[i] || newWidths[i]; });
-    // Force the prior width to paint before applying the event's actual values.
-    app.querySelector('.arena')?.getBoundingClientRect();
-    bars.forEach((bar, i) => { bar.style.width = newWidths[i]; });
-    animateEvent(event, 'impact');
-    await delay((reducedMotion ? 160 : event.type === 'faint' ? 650 : 600) / playbackSpeed);
-  }
-  if (version !== playbackVersion) return;
-  run = recordBattle(run, result.state);
-  playing = false;
-  currentEvent = null;
-  if (run.battle.winner) { claimReward(); audio.play({ type: run.battle.winner === 'player' ? 'victory' : 'defeat' }); }
-  persist();
-  render(Boolean(run.battle.winner));
+  if (document.hidden) task.finish('hidden');
+  try { await task.done; }
+  finally { if (playback === task) playback = null; }
 }
+document.addEventListener('visibilitychange', () => { if (document.hidden) playback?.finish('hidden'); });
 app.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-action]'); if (!button || button.disabled) return;
   audio.unlock();
   const { action, id } = button.dataset; let focus = true;
+  if (action === 'skip-playback') { playback?.finish('skip'); return; }
   if (['speed', 'motion', 'sfx', 'music'].includes(action)) {
     if (action === 'speed') playbackSpeed = playbackSpeed === 1 ? 2 : 1;
     if (action === 'motion') reducedMotion = !reducedMotion;
@@ -272,7 +291,7 @@ app.addEventListener('click', async (event) => {
   }
   if (action === 'new' || action === 'restart') {
     if (!window.confirm('开启新旅程会清空本次队伍与所有成长经验，原本机存档会保留为备份。确认开始？')) return;
-    ++playbackVersion; currentEvent = null; run = freshChapter(); progress = {}; ui = {}; landing = false; savedData = null;
+    currentEvent = null; turnSummary = []; run = freshChapter(); progress = {}; ui = {}; landing = false; savedData = null;
     persist(true); render(true); return;
   }
   if (landing) return;
@@ -293,7 +312,7 @@ app.addEventListener('click', async (event) => {
     else if (action === 'evolve-confirm') { run = evolveCompanion(run, progress, id); ui = { evolutionReveal: id }; audio.play({ type: 'bond' }); }
     else if (action === 'evolution-close') ui = {};
     else if (action === 'ending') { run = showEnding(run); ui = {}; }
-    else if (action === 'start-battle') { ++playbackVersion; currentEvent = null; run = beginEncounter(run, progress, id); ui = {}; }
+    else if (action === 'start-battle') { currentEvent = null; turnSummary = []; run = beginEncounter(run, progress, id); ui = {}; }
     else if (action === 'move' || action === 'switch') {
       void playTurn(action === 'move' ? { type: 'move', moveId: id } : { type: 'switch', index: Number(button.dataset.index) }); return;
     }

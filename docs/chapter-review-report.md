@@ -48,3 +48,11 @@ The final `creatureArt` change selects the three `*-evolved.png` files only for 
 ### Final resource-reference follow-up
 
 Accepted the narrow CSS correction: `.chapter-map` now references existing `assets/battlefield.png` relative to `src/style.css`; no `battle-bg.png` reference remains in that stylesheet. The gradient/layout are preserved. The `index.html` description now accurately describes eight locations, six species and three trials. No new review blocker. Root reports a fresh 81-test pass and successful build; resource/defeat browser rechecks remain with QA, and no broad tests were repeated here.
+
+## Targeted first-battle responsiveness review
+
+Reviewed the playback change, new `src/playback.js` and its four tests, plus the surrounding fresh `main.js`/audio integration. No critical correctness finding. The complete outcome and reward state are computed before presentation; intermediate snapshots are not persisted. Normal completion, skip, animation error and timeout share one inactive-before-commit gate. Checks after awaits prevent stale animation writes after an immediate settlement or a subsequent turn. Save schemas are unchanged.
+
+Two nonblocking text observations were sent to root: finished battles should not display the “choose a skill or switch” announcement; automatic-recovery messaging should avoid claiming a successful save when persistence reports storage failure. Suggested focused browser error injection and skip/new-turn checks to supplement helper-level tests. Root reports 85 unit tests and build passing; this review did not rerun the broad suite. Browser acceptance remains pending the targeted retest.
+
+Playback follow-up accepted: finished-battle announcement now points to result navigation; automatic recovery says the round was settled without claiming storage success; projectile duration matches the 240 ms windup. Root reports direct CUA evidence for immediate acknowledgement, consecutive skips, deterministic HP/outcomes after refresh and a roughly 1.3-second subsequent shield turn. Both text observations are resolved; no additional broad review or test run was performed.
