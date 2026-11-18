@@ -1,9 +1,21 @@
 import { CREATURES } from './data.js';
 import { combatConfig } from './progression.js';
-const config = actor => combatConfig(actor.id,actor.xp);
+const config = actor => combatConfig(actor.id,actor.xp,actor.evolved ?? false);
 const species = new Map(CREATURES.map(c => [c.id,c]));
 const beats = {金:'木',木:'土',土:'水',水:'火',火:'金'};
 const sides = ['player','enemy'];
+const encounterIds = ['ridge','marsh','source'];
+export function encounterTelegraph(state) {
+  if (state.encounterId === 'ridge') return state.turn % 2 === 1 ? '岩脊护势：本回合守关方受到的直接伤害减少 8（至少 1）。偶数回合护势消散。' : '岩脊护势消散：本回合直接伤害正常；下回合守关方减伤 8。';
+  if (state.encounterId === 'marsh') return state.turn % 2 === 0 ? '泥沼涨水：本回合我方速度减半，与减速叠加；换位与优先技能仍保留优先级。' : '泥沼退水：本回合地形不降低速度；偶数回合我方速度减半。';
+  if (state.encounterId === 'source') return state.turn % 3 === 0 ? '泉眼奔涌：本回合守关方每次直接攻击伤害增加 8。' : `泉眼蓄流：距离奔涌还有 ${3-state.turn%3} 回合，届时守关方直接攻击伤害增加 8。`;
+  return '';
+}
+function terrainDamage(state,side) {
+  if (state?.encounterId === 'ridge' && state.turn % 2 === 1 && side === 'player') return -8;
+  if (state?.encounterId === 'source' && state.turn % 3 === 0 && side === 'enemy') return 8;
+  return 0;
+}
 const integer = (n,min,max=Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(n) && n>=min && n<=max;
 const requireThat = (condition,message) => {if (!condition) throw new Error(message);};
 export function effectiveness(attackElement,defenseElement) {
@@ -19,6 +31,7 @@ function result(state) {
 }
 export function validateBattle(state) {
   requireThat(state && integer(state.turn,1) && Array.isArray(state.log) && state.log.length<=200 && state.log.every(l=>typeof l==='string' && l.length<=500),'战斗状态无效');
+  requireThat(state.encounterId === undefined || encounterIds.includes(state.encounterId),'关卡无效');
   for (const side of sides) {
     const squad=state[side];
     requireThat(squad && Array.isArray(squad.team),'队伍状态无效');
@@ -26,6 +39,7 @@ export function validateBattle(state) {
     requireThat(integer(squad.active,0,2) && integer(squad.switchCooldown,0,2),'出场位置无效');
     for (const c of squad.team) {
       requireThat(integer(c.xp,0,90),'经验无效');
+      requireThat(c.evolved === undefined || typeof c.evolved === 'boolean','进化标记无效');
       const base=config(c);
       requireThat(c.level===base.level && c.maxHp===base.hp && integer(c.hp,0,c.maxHp) && integer(c.burn,0,3) && integer(c.slow,0,3) && integer(c.shield,0,36),'异兽状态无效');
       requireThat(c.cooldowns && Object.keys(c.cooldowns).length===base.moves.length && base.moves.every(m=>Object.hasOwn(c.cooldowns,m.id) && integer(c.cooldowns[m.id],0,m.cooldown)),'技能冷却无效');
@@ -38,18 +52,22 @@ export function validateBattle(state) {
 export function createBattle(playerIds,enemyIds,options={}) {
   checkIds(playerIds);checkIds(enemyIds);
   requireThat(options && typeof options==='object','战斗选项无效');
-  const progress=options.playerProgress ?? {};
-  requireThat(progress && typeof progress==='object' && !Array.isArray(progress) && Object.entries(progress).every(([id,xp])=>species.has(id) && integer(xp,0,90)),'成长记录无效');
-  const team=(ids,progress={})=>({active:0,switchCooldown:0,team:ids.map(id=>{const xp=progress[id]??0,c=combatConfig(id,xp);return {id,xp,level:c.level,hp:c.hp,maxHp:c.hp,cooldowns:Object.fromEntries(c.moves.map(m=>[m.id,0])),burn:0,slow:0,shield:0};})});
-  return {turn:1,player:team(playerIds,progress),enemy:team(enemyIds),winner:null,log:['山隘试炼开始。']};
+  requireThat(options.encounterId === undefined || encounterIds.includes(options.encounterId),'关卡无效');
+  const team=(ids,progress={},evolved=[])=>{
+    requireThat(progress && typeof progress==='object' && !Array.isArray(progress) && Object.entries(progress).every(([id,xp])=>species.has(id) && integer(xp,0,90)),'成长记录无效');
+    requireThat(Array.isArray(evolved) && new Set(evolved).size===evolved.length && evolved.every(id=>species.has(id)),'进化队伍无效');
+    for (const id of evolved) combatConfig(id,progress[id]??0,true);
+    return {active:0,switchCooldown:0,team:ids.map(id=>{const xp=progress[id]??0,isEvolved=evolved.includes(id),c=combatConfig(id,xp,isEvolved);return {id,xp,evolved:isEvolved,level:c.level,hp:c.hp,maxHp:c.hp,cooldowns:Object.fromEntries(c.moves.map(m=>[m.id,0])),burn:0,slow:0,shield:0};})};
+  };
+  return {turn:1,player:team(playerIds,options.playerProgress,options.playerEvolved),enemy:team(enemyIds,options.enemyProgress,options.enemyEvolved),...(options.encounterId ? {encounterId:options.encounterId} : {}),winner:null,log:['山隘试炼开始。']};
 }
-function damage(actor,target,move) {
+function damage(actor,target,move,state,side) {
   const a=config(actor),d=config(target);
-  return Math.max(1,Math.round((move.power+a.attack*.65-d.defense*.45)*effectiveness(a.element,d.element)));
+  return Math.max(1,Math.round((move.power+a.attack*.65-d.defense*.45)*effectiveness(a.element,d.element))+terrainDamage(state,side));
 }
-function impact(actor,target,move) {
+function impact(actor,target,move,state,side) {
   const multiplier=move.power>0?effectiveness(config(actor).element,config(target).element):1;
-  const raw=move.power>0?damage(actor,target,move):0;
+  const raw=move.power>0?damage(actor,target,move,state,side):0;
   const shieldDamage=Math.min(target.shield,raw);
   return {damage:raw,hpDamage:Math.min(target.hp,raw-shieldDamage),shieldDamage,multiplier};
 }
@@ -58,12 +76,12 @@ export function previewMove(state,moveId) {
   const actor=state.player.team[state.player.active],target=state.enemy.team[state.enemy.active];
   const move=config(actor).moves.find(m=>m.id===moveId);
   requireThat(move,'技能不存在');
-  return impact(actor,target,move);
+  return impact(actor,target,move,state,'player');
 }
 // Select state fields explicitly: presentation events never become part of game state.
 function snapshot(state) {
   const {turn,player,enemy,winner,log}=state;
-  return structuredClone({turn,player,enemy,winner,log});
+  return structuredClone({turn,player,enemy,winner,log,...(state.encounterId ? {encounterId:state.encounterId} : {})});
 }
 export function chooseEnemyAction(state) {
   validateBattle(state);requireThat(!state.winner,'战斗已经结束');
@@ -71,16 +89,16 @@ export function chooseEnemyAction(state) {
   const moves=config(actor).moves.filter(m=>actor.cooldowns[m.id]===0);
   // Commit only from the public board; never inspect the selected player action.
   const threats=config(target).moves.filter(m=>m.power>0 && target.cooldowns[m.id]===0);
-  const incoming=Math.max(...threats.map(m=>damage(target,actor,m)));
+  const incoming=Math.max(...threats.map(m=>damage(target,actor,m,state,'player')));
   const squad=state.enemy;
   // Preserve a wounded disadvantaged ally only if the replacement can absorb a hit.
   // A two-round lock prevents switching back and forth instead of fighting.
   if (!squad.switchCooldown && actor.hp<actor.maxHp*.5 && actor.hp>incoming && effectiveness(config(target).element,config(actor).element)>1) {
-    const index=squad.team.findIndex((c,i)=>i!==squad.active && c.hp>0 && effectiveness(config(target).element,config(c).element)<1 && c.hp>Math.max(...threats.map(m=>damage(target,c,m))));
+    const index=squad.team.findIndex((c,i)=>i!==squad.active && c.hp>0 && effectiveness(config(target).element,config(c).element)<1 && c.hp>Math.max(...threats.map(m=>damage(target,c,m,state,'player'))));
     if(index>=0) return {type:'switch',index};
   }
   const score=m=>{
-    if(m.power>0) return impact(actor,target,m).hpDamage+(m.effect?.type==='burn' && !target.burn ? 10 : 0)+(m.effect?.type==='slow' && !target.slow ? 4 : 0);
+    if(m.power>0) return impact(actor,target,m,state,'enemy').hpDamage+(m.effect?.type==='burn' && !target.burn ? 10 : 0)+(m.effect?.type==='slow' && !target.slow ? 4 : 0);
     if(m.effect?.type==='heal') return actor.maxHp-actor.hp>=35 && actor.hp<actor.maxHp*.5 ? 39 : -1;
     if(m.effect?.type==='shield' && incoming>=actor.hp+actor.shield && incoming<actor.hp+Math.max(actor.shield,m.effect.value)) return 100;
     return -1;
@@ -113,11 +131,12 @@ export function resolveTurn(state,action) {
   const enemyAction=chooseEnemyAction(state),next=snapshot(state),events=[];
   const emit=event=>events.push({...event,state:snapshot(next)});
   next.log.push(`第 ${state.turn} 回合`);
+  if (next.encounterId) next.log.push(encounterTelegraph(next));
   const commands=sides.map((side,i)=>{
     const actor=next[side].team[next[side].active];
     const chosen=i===0?action:enemyAction;
     const priority=chosen.type==='switch'?2:(config(actor).moves.find(m=>m.id===chosen.moveId).priority??0);
-    return {side,actor,action:chosen,priority,speed:config(actor).speed*(actor.slow>0?.5:1)};
+    return {side,actor,action:chosen,priority,speed:config(actor).speed*(actor.slow>0?.5:1)*(next.encounterId==='marsh' && next.turn%2===0 && side==='player'?.5:1)};
   }).sort((a,b)=>b.priority-a.priority || b.speed-a.speed || (a.side==='player'?-1:1));
   for (const command of commands) {
     if (next.winner) break;
@@ -127,7 +146,7 @@ export function resolveTurn(state,action) {
     const move=config(actor).moves.find(m=>m.id===chosen.moveId);
     const targetSide=side==='player'?'enemy':'player',target=next[targetSide].team[next[targetSide].active];
     const name=config(actor).name;
-    const hit=impact(actor,target,move);
+    const hit=impact(actor,target,move,next,side);
     const event={type:'move',side,targetSide,actorId:actor.id,targetId:target.id,moveId:move.id,hpDamage:hit.hpDamage,shieldDamage:hit.shieldDamage,multiplier:hit.multiplier};
     actor.cooldowns[move.id]=move.cooldown>0?move.cooldown+1:0;
     if (move.power>0) {

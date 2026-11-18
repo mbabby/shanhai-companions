@@ -25,3 +25,9 @@ test('victory, defeat, draw and cap produce immutable accurate reward records',(
   for(const winner of ['enemy','draw']) assert.equal(awardExperience({},['fox'],winner).progress.fox,10);
   for(const [p,t,w] of [[{bad:0},['fox'],'player'],[{fox:91},['fox'],'player'],[{},['fox','fox'],'player'],[{},['bad'],'player'],[{},['fox'],null]]) assert.throws(()=>awardExperience(p,t,w));
 });
+test('evolved combat tooltips explain actions rather than permanent stat gains',()=>{
+ for(const id of ['fox','turtle','deer'])assert.doesNotMatch(combatConfig(id,90,true).moves[1].description,/生命增加|攻击增加/);
+ assert.match(combatConfig('fox',90,true).moves[1].description,/6%/);
+ assert.match(combatConfig('turtle',90,true).moves[1].description,/24.*护盾/);
+ assert.match(combatConfig('deer',90,true).moves[1].description,/18.*生命/);
+});
